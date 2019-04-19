@@ -1,5 +1,4 @@
-//export const BASE_API_URL = 'http://npfonlinetest.com/KioskMobApp/api/Kiosk/'
-export const BASE_API_URL = 'http://npfonline.com/KioskMobApp/api/Kiosk/'
+
 
 export const RESPONSE_TIMEOUT = 60000
 
