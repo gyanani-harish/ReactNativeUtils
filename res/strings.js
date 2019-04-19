@@ -99,15 +99,14 @@ export default {
             skus: 'Skus',
             units: 'Units',
             colon: ':',
-            custom_font: 'kioskFont',  // this is custom font name don't remove from here
-            custom_font_bold_android:'kioskFontMedium',
-            custom_font_italic_android:'kioskFontItalic',
+            
+            
             roboto_font_android:'RobotoRegular',
             roboto_font_bold_android:'RobotoBold',
             roboto_font_black_android:'RobotoBold',
             roboto_font_light_bold_android:'RobotoBold',
             
-            custom_font_for_ios: 'Geomanist',      // it is same as kioskFont . it was just edit by client
+            custom_font_for_ios: 'Geomanist',     
             full_name: 'Full Name',
             email_address: 'Email Address',
             phone: 'Phone',
@@ -184,7 +183,7 @@ export default {
             advanced_search: "Advanced Search",
             name: "Name",
             booking_reference: "Booking Reference",
-            npf_reference: "NPF Reference",
+            
             purchase_order: "Purchase Order",
             supplier: "Supplier",
             delivery_date: "Delivery Date",
@@ -294,7 +293,7 @@ export default {
             new_pass_length: 'New password length must be less than 11 characters',
             new_pass_length_5: "New password length must be greater than 5 characters",
             correct_old_pass: 'Please enter correct old password',
-            user_instrutions_line_on_login:'You need to be an existing NPFulfilment user to log-in',
+            
             //Error Messages
             validation_company_url:"Please enter valid company url",
             valdiation_please_write_www:'Please write www in website url',
