@@ -1,0 +1,315 @@
+
+import * as ApiInterface from './ApiInterface';
+import * as MethodType from './MethodType'
+import Log from '../utils/Log';
+import { NetInfo, Keyboard  } from 'react-native';
+var R = require('../res/strings').default;
+import AlertAll from '../utils/AlertAll'
+import Utils from '../utils/Utils';
+
+import * as WebApiStatus from './WebApiStatus'
+export default class ApiClient{
+
+    /**
+     * 
+     * @param {*} endpoint 
+     * @param {*} headers 
+     * @param {*} json 
+     * @param {*} callbackSuccess 
+     * @param {*} callbackFailure 
+     * @param {*} context 
+     */
+    static callApiPost(endpoint, headers, json, callbackSuccess, callbackFailure, context, showProgress=true) {
+       
+        const apiClientContext=this;
+        try {
+            if(endpoint!='GetItemCodeList' && endpoint!='GetImportBatchList'){
+                Keyboard.dismiss();
+            }
+            NetInfo
+                .isConnected
+                .fetch()
+                .then(isConnected => {
+                 
+                    if (isConnected) {
+                        Log.showLog('Net connected');
+                        apiClientContext.handleNetworkCase(endpoint, headers, json, callbackSuccess, callbackFailure, context, showProgress);
+                    } else {
+                        Log.showLog('Net not connected');
+                        apiClientContext.handleNoNetworkCase(endpoint, headers, json, callbackSuccess, callbackFailure, context, showProgress);
+                    }
+                });
+        } catch (error) {
+            //
+            // might be a timeout error
+            // Log.showLog('catch error', error);
+            //callbackFailure(error);
+        }
+    }
+
+    static handleNetworkCase(endpoint, headers, json, callbackSuccess, callbackFailure, context, showProgress){
+       Log.showLog('ApiClient handleNetworkCase context='+context);
+        if(!Utils.isNullOrUndefined(context) && showProgress){
+            context.setState({ isProgressVisible: true });
+        }
+        const apiClientContext=this;
+        var request = new XMLHttpRequest();
+        request.timeout = ApiInterface.RESPONSE_TIMEOUT;
+        const completeWebApiURL=ApiInterface.BASE_API_URL + endpoint;
+
+        request.onreadystatechange = (e) => {
+            if (request.readyState !== 4) {
+                return;
+            }
+            if (request.status === 200) {
+                apiClientContext.handleWebApiOkResponse(endpoint, headers, json, callbackSuccess, callbackFailure, context, request, completeWebApiURL, showProgress);
+            } else {
+                apiClientContext.handleWebApiNotOkResponse(endpoint, headers, json, callbackSuccess, callbackFailure, context, request, completeWebApiURL, showProgress);
+            }
+        };
+        request.ontimeout = function (e) {
+            Log.showLog('web api timeout happened',e);
+            
+            apiClientContext.errorHandling(endpoint, headers, json, callbackSuccess, 
+                callbackFailure, context, request, completeWebApiURL,R.str.default_error,e,apiClientContext, showProgress)
+            
+        };
+        request.onerror = function (e){
+            Log.showLog('web api onerror happened',e);
+            Log.showLogSingle('isNetworkUnavailable='+Utils.isNetworkUnavailable(e));
+            apiClientContext.errorHandling(endpoint, headers, json, callbackSuccess, 
+                callbackFailure, context, request, completeWebApiURL,R.str.default_error,e,apiClientContext, showProgress)
+        }
+        request.onabort = function(e){
+            Log.showLog('web api onabort happened',e);
+            apiClientContext.errorHandling(endpoint, headers, json, callbackSuccess, 
+                callbackFailure, context, request, completeWebApiURL,R.str.default_error,e,apiClientContext, showProgress)
+        }
+        request.open(MethodType.POST, completeWebApiURL);
+
+        if (headers != null) {
+            apiClientContext.setHeaders(request, headers);
+        }
+
+        request.setRequestHeader("Content-Type", "application/json");
+        
+        request.send(json != null? json : "");
+    }
+    static errorHandling(endpoint, headers, json, callbackSuccess, 
+        callbackFailure, context, request, completeWebApiURL,message,e,apiClientContext, showProgress){
+            apiClientContext.showRequestLog(completeWebApiURL,json,headers);
+            // XMLHttpRequest timed out. Do something here.
+            if(!Utils.isNullOrUndefined(context) && showProgress){
+                context.setState({ isProgressVisible: false, isPullToRefresh:false });
+            }
+            NetInfo
+            .isConnected
+            .fetch()
+            .then(isConnected => {
+                if(isConnected){
+                    if(Utils.isNetworkUnavailable(e)){
+                        apiClientContext.showRetryDialog(endpoint, headers, json, callbackSuccess, callbackFailure, context, request, completeWebApiURL, R.str.cant_connect_to_internet, showProgress);
+                    } else {
+                        apiClientContext.showRetryDialog(endpoint, headers, json, callbackSuccess, callbackFailure, context, request, completeWebApiURL, message, showProgress);
+                    }
+                }else{
+                    apiClientContext.showRetryDialog(endpoint, headers, json, callbackSuccess, callbackFailure,context,null,null,R.str.internet_connect_error, showProgress);
+                }
+            });
+            Log.showLogSingle('====================web api end=====================');
+                        
+    }
+    static handleNoNetworkCase(endpoint,headers,json,callbackSuccess,callbackFailure, context, showProgress){
+        this.showRetryDialog(endpoint, headers, json, callbackSuccess, callbackFailure,context,null,null,R.str.internet_connect_error, showProgress);
+    }
+    static handleWebApiNotOkResponse(endpoint, headers, json, callbackSuccess, callbackFailure, context, request, completeWebApiURL, showProgress){
+        if(!Utils.isNullOrUndefined(context) && showProgress){
+            context.setState({ isProgressVisible: false, isPullToRefresh:false  });
+        }
+        this.showRequestLog(completeWebApiURL,json,headers);
+        Log.showLog('web api error=>', JSON.stringify(request));
+        Log.showLogSingle('====================web api end=====================');
+        //callbackFailure(request.responseText)
+        this.showRetryDialog(endpoint,headers,json,callbackSuccess,callbackFailure,context,request,completeWebApiURL,R.str.server_error_occurred,showProgress);
+    }
+    static handleWebApiOkResponse(endpoint, headers, json, callbackSuccess, callbackFailure, context, request, completeWebApiURL, showProgress){
+        try {
+            if(!Utils.isNullOrUndefined(context) && showProgress){
+                context.setState({ isProgressVisible: false, isPullToRefresh:false   });
+            }
+            if(!Utils.isNullOrUndefined(request.responseText)){
+                let response = JSON.parse(request.responseText);
+                this.showRequestLog(completeWebApiURL, json, headers);
+                Log.showLog('Response=>', JSON.stringify(response));
+                Log.showLogOld('ResponseFormatted=>', JSON.stringify(response,null,2));
+                Log.showLogSingle('====================web api end=====================');
+                if(!Utils.isNullOrUndefined(response)){
+                    if(response.Status===1 && response.StatusCode===200){
+                        callbackSuccess(response);
+                    }else if(response.StatusCode===WebApiStatus.WEB_API_STATUS_INVALID_LOGIN
+                         || response.StatusCode===WebApiStatus.WEB_API_STATUS_SESSION_EXPIRED){
+                       //redirect user to login screen
+                        AlertAll.simpleOKAlert('', R.str.error_session_timed_out_login_again, R.str.ok,
+                            function (response) {
+                                if (!Utils.isNullOrUndefined(context)) {
+                                    Utils.redirectToLoginScreen(context.props.navigation);
+                                }
+                            },false);
+                        if (!Utils.isNullOrUndefined(context) && showProgress) {
+                            context.setState({ isProgressVisible: false, isPullToRefresh:false   });
+                        }else{
+                            callbackFailure(response.Message);
+                        }
+                    }
+                    else if (response.StatusCode === WebApiStatus.INTERNAL_SERVER_ERROR) {
+                        if(!showProgress){
+                            callbackFailure(response.Message);
+                        } 
+                        this.showRetryDialog(endpoint, headers, json, callbackSuccess, callbackFailure, context, request, completeWebApiURL,R.str.server_error_occurred, showProgress);
+                    }else {
+                        //ok dialog
+                        
+                        if(endpoint =='ForgotPassword'){
+                            AlertAll.simpleOKAlert('Alert',response.Message,'OK',function(){context.setState({isButtonClicked:false})},false)
+                        }else{
+                            if(!showProgress){
+                                callbackFailure(response.Message);
+                            }   
+                            AlertAll.showErrorAlert(response.Message);
+                        }   
+
+                        if(endpoint=='PasswordChange'){
+                            context.setState({isSaveButtonClicked:false})
+                        }
+                       
+                        //retry
+                        Log.showLog('response.Status===1 && response.StatusCode===200 false');
+                    }
+                }else{
+                    //retry
+                    this.showRetryDialog(endpoint, headers, json, callbackSuccess, callbackFailure, context, request, completeWebApiURL, showProgress);
+                    //callbackFailure(R.str.server_error_occurred);
+                }
+            }else{
+                this.showRequestLog(completeWebApiURL,json,headers);
+                //callbackFailure(R.str.server_error_occurred);
+                this.showRetryDialog(endpoint, headers, json, callbackSuccess, callbackFailure, context, request, completeWebApiURL, showProgress);
+            }
+        } catch (ex) {
+            Log.showLog(ex);
+        }
+    }
+        
+    static showRetryDialog(endpoint, headers, json, callbackSuccess, callbackFailure, context, request, completeWebApiURL,message=R.str.server_error_occurred, showProgress){
+        const apiClientContext = this;
+
+        AlertAll.simpleOkCancelAlert('', message,
+            R.str.retry, R.str.cancel,
+            function (response) {
+                apiClientContext.callApiPost(endpoint, headers, json, callbackSuccess, callbackFailure,context, showProgress);
+            }, true);
+    }
+    static showRequestLog(completeWebApiURL, json, paramsMap){
+        Log.showLogSingle('=================web api start========================');
+        Log.showLog('POST webapiURL=>',completeWebApiURL);
+        Log.showLogSingle('headerParamsMap=>');
+        this.printHeaderMap(paramsMap);
+        Log.showLog('Request=>', json);
+    }
+    static printHeaderMap(headersMap){
+        var fullStr='';
+        for (var item in headersMap) {
+            fullStr+=( item + ':' + headersMap[item]+'    ');
+        }
+        Log.showLogSingle(fullStr);
+    }
+    static showInternetError(callbackFailure) {
+       /*  timerId = setTimeout(() => {
+            callbackFailure(R.str.internet_connect_error);
+            //AlertAll.simpleOKAlert('hi','hello','Retry',null,false);
+        }, 50); */
+    }
+    static callApiGet(endpoint, paramsMap, headers, callbackSuccess, callbackFailure) {
+        // check endpoint should not be empty check callbackSuccess must not be null
+        // check callbackFailure must not be null
+        // const url = this.getCompleteURL(endpoint, paramsMap);
+         const url = ApiInterface.BASE_API_URL+"GetClientProfileDetails"   
+        fetch(url).then(res => {
+            //
+            Log.showLogSingle('raw response is ');
+            Log.showLogSingle(res);
+            if (res.ok) {
+                return res.json();
+                //
+            } else {
+                throw Error('Server Error ' + res.status);
+                //
+                }
+            })
+            .then(text => {
+                Log.showLog('json response is');
+                const jsonStr = JSON.stringify(text);
+                Log.showLog(jsonStr);
+                callbackSuccess(jsonStr);
+            })
+            .catch(function (error) {
+                //
+                Log.showLogSingle('error is');
+                Log.showLogSingle(error);
+                callbackFailure(error);
+            }); 
+    }
+    static getCompleteURL(endpoint, paramsMap) {
+        /* if (Utils.isEmpty(endpoint)) {
+            return "";
+        } */
+        var s = ApiInterface.BASE_API_URL + endpoint
+        /* if(CollectionUtils.isEmpty(paramsMap)){
+            return s; 
+        } */
+        s = s + '?';
+        Log.showLog('s='+s);
+        for (var item in paramsMap) {
+            Log.showLog('key:' + item + ' value:' + paramsMap[item]);
+            s = s + item +'='+ paramsMap[item] /* + '&' */;
+            Log.showLog('s='+s);
+            // Output key:key value:value key:anotherKey value:anotherValue
+        }
+        /* StringUtils.removeLastChar(s); */
+        return s;
+    
+    }
+
+    static setHeaders(request, paramsMap) {
+        if (paramsMap) {
+            for (var item in paramsMap) {
+                //Log.showLog('key:' + item + ' value:' + paramsMap[item]);
+                request.setRequestHeader(item, paramsMap[item]);
+            }
+        }
+    }
+
+
+    static getCompleteHeaders(paramsMap) {
+        /* if (Utils.isEmpty(endpoint)) {
+            return "";
+        } */
+        var s = ApiInterface.BASE_API_URL + endpoint
+        /* if(CollectionUtils.isEmpty(paramsMap)){
+            return s; 
+        } */
+        s = s + '?';
+        Log.showLog('s='+s);
+        for (var item in paramsMap) {
+            Log.showLog('key:' + item + ' value:' + paramsMap[item]);
+            s = s + item +'='+ paramsMap[item] /* + '&' */;
+            Log.showLog('s='+s);
+            // Output key:key value:value key:anotherKey value:anotherValue
+        }
+        /* StringUtils.removeLastChar(s); */
+        return s;
+    
+    }
+}
+
+
